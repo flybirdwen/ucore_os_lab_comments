@@ -346,7 +346,7 @@ pmm_init(void) {
 //  create: a logical value to decide if alloc a page for PT
 // return vaule: the kernel virtual address of this pte
 pte_t *
-get_pte(pde_t *pgdir, uintptr_t la, bool create) {
+get_pte(pde_t *pgdir, uintptr_t la, bool create) { // 获得线性地址la对应的页表项（参数：页目录表地址，线性地址，是否分配新页给页表）
     /* LAB2 EXERCISE 2: YOUR CODE
      *
      * If you need to visit a physical address, please use KADDR()
@@ -380,18 +380,18 @@ get_pte(pde_t *pgdir, uintptr_t la, bool create) {
     }
     return NULL;          // (8) return page table entry
 #endif
-    pde_t *pdep = &pgdir[PDX(la)];
-    if (!(*pdep & PTE_P)) {
+    pde_t *pdep = &pgdir[PDX(la)]; // 获得线性地址la在页目录表中的对应目录项，注意：线性地址即是逻辑地址通过段机制映射得到的
+    if (!(*pdep & PTE_P)) { // 检查该页目录项是否有对应的二级页表，若没有则需要创建
         struct Page *page;
-        if (!create || (page = alloc_page()) == NULL) {
+        if (!create || (page = alloc_page()) == NULL) { // 分配一个页page用于创建对应的二级页表
             return NULL;
         }
-        set_page_ref(page, 1);
-        uintptr_t pa = page2pa(page);
-        memset(KADDR(pa), 0, PGSIZE);
-        *pdep = pa | PTE_U | PTE_W | PTE_P;
+        set_page_ref(page, 1); // 设置页page的引用数为1
+        uintptr_t pa = page2pa(page); // 获得页page的物理地址
+        memset(KADDR(pa), 0, PGSIZE); // 将页page的内容清零
+        *pdep = pa | PTE_U | PTE_W | PTE_P; // 设置页表项的相关标志位（Present, Writable, User
     }
-    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)];
+    return &((pte_t *)KADDR(PDE_ADDR(*pdep)))[PTX(la)]; // 返回la对应的页表项
 }
 
 //get_page - get related Page struct for linear address la using PDT pgdir
@@ -411,7 +411,7 @@ get_page(pde_t *pgdir, uintptr_t la, pte_t **ptep_store) {
 //                - and clean(invalidate) pte which is related linear address la
 //note: PT is changed, so the TLB need to be invalidate 
 static inline void
-page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
+page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) { // 清除线性地址对应的页表项
     /* LAB2 EXERCISE 3: YOUR CODE
      *
      * Please check if ptep is valid, and tlb must be manually updated if mapping is updated
@@ -437,13 +437,13 @@ page_remove_pte(pde_t *pgdir, uintptr_t la, pte_t *ptep) {
                                   //(6) flush tlb
     }
 #endif
-    if (*ptep & PTE_P) {
-        struct Page *page = pte2page(*ptep);
-        if (page_ref_dec(page) == 0) {
+    if (*ptep & PTE_P) { // 检查页表项是否存在
+        struct Page *page = pte2page(*ptep); // 获得页表项指向的页帧
+        if (page_ref_dec(page) == 0) { // 该页的引用数减1，若减后为0，则需释放该页帧
             free_page(page);
         }
-        *ptep = 0;
-        tlb_invalidate(pgdir, la);
+        *ptep = 0; // 清除页表项
+        tlb_invalidate(pgdir, la); // 刷新快表
     }
 }
 
