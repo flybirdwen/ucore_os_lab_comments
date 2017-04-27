@@ -302,49 +302,49 @@ volatile unsigned int pgfault_num=0;
  *            or supervisor mode (0) at the time of the exception.
  */
 int
-do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
-    int ret = -E_INVAL;
+do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) { // 处理页访问异常（该函数的3个参数：虚拟内存地址空间，错误码，发生页访问异常的地址）
+    int ret = -E_INVAL; // Invalid parameter 参数错误
     //try to find a vma which include addr
-    struct vma_struct *vma = find_vma(mm, addr);
+    struct vma_struct *vma = find_vma(mm, addr); // 在mm中找到addr所在的vma（注：mm链接了多个vma，它们是属于同一个页目录表的连续虚拟内存空间）
 
-    pgfault_num++;
+    pgfault_num++; // 页访问异常次数加1
     //If the addr is in the range of a mm's vma?
-    if (vma == NULL || vma->vm_start > addr) {
+    if (vma == NULL || vma->vm_start > addr) { // 判断发生页访问异常的地址add是否在find_vma()所定位到的vma范围中
         cprintf("not valid addr %x, and  can not find it in vma\n", addr);
         goto failed;
     }
     //check the error_code
-    switch (error_code & 3) {
+    switch (error_code & 3) { // 检查错误码error_code。位0表示缺页（0）或违反访问权限（1）；位1表示发生异常的是读操作（0）或写操作（1）；位2表示运行在用户态（1）或内核态（0）
     default:
             /* error code flag : default is 3 ( W/R=1, P=1): write, present */
     case 2: /* error code flag : (W/R=1, P=0): write, not present */
-        if (!(vma->vm_flags & VM_WRITE)) {
+        if (!(vma->vm_flags & VM_WRITE)) { // 试图对不可写的地址进行写操作
             cprintf("do_pgfault failed: error code flag = write AND not present, but the addr's vma cannot write\n");
             goto failed;
         }
         break;
-    case 1: /* error code flag : (W/R=0, P=1): read, present */
+    case 1: /* error code flag : (W/R=0, P=1): read, present */ // 试图读无权读的地址
         cprintf("do_pgfault failed: error code flag = read AND present\n");
         goto failed;
     case 0: /* error code flag : (W/R=0, P=0): read, not present */
-        if (!(vma->vm_flags & (VM_READ | VM_EXEC))) {
+        if (!(vma->vm_flags & (VM_READ | VM_EXEC))) { // 试图对不可读的地址进行读操作
             cprintf("do_pgfault failed: error code flag = read AND not present, but the addr's vma cannot read or exec\n");
             goto failed;
         }
-    }
+    } // error_code检查完毕，合法，继续往下走。
     /* IF (write an existed addr ) OR
      *    (write an non_existed addr && addr is writable) OR
      *    (read  an non_existed addr && addr is readable)
      * THEN
      *    continue process
      */
-    uint32_t perm = PTE_U;
-    if (vma->vm_flags & VM_WRITE) {
+    uint32_t perm = PTE_U; // 定义perm作为页表项的标志位，并设页表项的用户标志位为1，即用户态的页表项
+    if (vma->vm_flags & VM_WRITE) { // vma可写，设置页表项的读写标志位为1
         perm |= PTE_W;
     }
-    addr = ROUNDDOWN(addr, PGSIZE);
+    addr = ROUNDDOWN(addr, PGSIZE); // 地址addr所在页面的起始地址
 
-    ret = -E_NO_MEM;
+    ret = -E_NO_MEM; // Request failed due to memory shortage 内存不足
 
     pte_t *ptep=NULL;
     /*LAB3 EXERCISE 1: YOUR CODE
@@ -380,12 +380,12 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
     *  MACROs or Functions:
     *    swap_in(mm, addr, &page) : alloc a memory page, then according to the swap entry in PTE for addr,
     *                               find the addr of disk page, read the content of disk page into this memroy page
-    *    page_insert ： build the map of phy addr of an Page with the linear addr la
-    *    swap_map_swappable ： set the page swappable
+    *    page_insert : build the map of phy addr of an Page with the linear addr la
+    *    swap_map_swappable : set the page swappable
     */
         if(swap_init_ok) {
             struct Page *page=NULL;
-                                    //(1）According to the mm AND addr, try to load the content of right disk page
+                                    //(1) According to the mm AND addr, try to load the content of right disk page
                                     //    into the memory which page managed.
                                     //(2) According to the mm, addr AND page, setup the map of phy addr <---> logical addr
                                     //(3) make the page swappable.
@@ -398,28 +398,28 @@ do_pgfault(struct mm_struct *mm, uint32_t error_code, uintptr_t addr) {
 #endif
     // try to find a pte, if pte's PT(Page Table) isn't existed, then create a PT.
     // (notice the 3th parameter '1')
-    if ((ptep = get_pte(mm->pgdir, addr, 1)) == NULL) {
+    if ((ptep = get_pte(mm->pgdir, addr, 1)) == NULL) { // 找到页表项，如果页表还没建则创建一个
         cprintf("get_pte in do_pgfault failed\n");
         goto failed;
     }
-    
+    // 这是一个新页表项，则分配物理页帧，并做好物理地址和逻辑地址的映射，以及设置页表项的标志位
     if (*ptep == 0) { // if the phy addr isn't exist, then alloc a page & map the phy addr with logical addr
         if (pgdir_alloc_page(mm->pgdir, addr, perm) == NULL) {
             cprintf("pgdir_alloc_page in do_pgfault failed\n");
             goto failed;
         }
-    }
+    } // 若*ptep不是0，表明它是已有的页表项，只是页帧置换到磁盘交换区上了，要把它置换回来内存，并做好地址映射及设置页表项标志位
     else { // if this pte is a swap entry, then load data from disk to a page with phy addr
            // and call page_insert to map the phy addr with logical addr
         if(swap_init_ok) {
             struct Page *page=NULL;
-            if ((ret = swap_in(mm, addr, &page)) != 0) {
+            if ((ret = swap_in(mm, addr, &page)) != 0) { // 分配一个物理页帧，并将磁盘中的页换入至该帧（注：此时页表项中的“页帧基地址”记录的是该页在磁盘的位置）
                 cprintf("swap_in in do_pgfault failed\n");
                 goto failed;
             }    
-            page_insert(mm->pgdir, page, addr, perm);
-            swap_map_swappable(mm, addr, page, 1);
-            page->pra_vaddr = addr;
+            page_insert(mm->pgdir, page, addr, perm); // 重新建立逻辑地址和物理地址的映射，并设置权限标志位
+            swap_map_swappable(mm, addr, page, 1); // 设置该页为可切换的（如FIFO算法中将页放在链表首位），在页置换算法中会用到
+            page->pra_vaddr = addr; // 设置pra_vaddr属性的值（该物理页对应的虚拟页地址），在页置换算法中会用到
         }
         else {
             cprintf("no swap_init_ok but ptep is %x, failed\n",*ptep);

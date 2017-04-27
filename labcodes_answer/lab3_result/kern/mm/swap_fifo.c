@@ -43,15 +43,15 @@ _fifo_init_mm(struct mm_struct *mm)
  */
 static int
 _fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int swap_in)
-{
-    list_entry_t *head=(list_entry_t*) mm->sm_priv;
-    list_entry_t *entry=&(page->pra_page_link);
+{ //
+    list_entry_t *head=(list_entry_t*) mm->sm_priv; // 取链表头
+    list_entry_t *entry=&(page->pra_page_link); // 要加入链表的页
  
     assert(entry != NULL && head != NULL);
     //record the page access situlation
     /*LAB3 EXERCISE 2: YOUR CODE*/ 
     //(1)link the most recent arrival page at the back of the pra_list_head qeueue.
-    list_add(head, entry);
+    list_add(head, entry); // 将刚访问并发生缺页的页链接到链表头
     return 0;
 }
 /*
@@ -60,8 +60,8 @@ _fifo_map_swappable(struct mm_struct *mm, uintptr_t addr, struct Page *page, int
  */
 static int
 _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick)
-{
-     list_entry_t *head=(list_entry_t*) mm->sm_priv;
+{ // 按FIFO算法选出要换出的页
+     list_entry_t *head=(list_entry_t*) mm->sm_priv; // 取链表头
          assert(head != NULL);
      assert(in_tick==0);
      /* Select the victim */
@@ -69,10 +69,10 @@ _fifo_swap_out_victim(struct mm_struct *mm, struct Page ** ptr_page, int in_tick
      //(1)  unlink the  earliest arrival page in front of pra_list_head qeueue
      //(2)  set the addr of addr of this page to ptr_page
      /* Select the tail */
-     list_entry_t *le = head->prev;
+     list_entry_t *le = head->prev; // 链表头前一个页帧作为牺牲帧（队列尾），即最早进入链表的那个页
      assert(head!=le);
      struct Page *p = le2page(le, pra_page_link);
-     list_del(le);
+     list_del(le); // 将要换出的页从链表中删除
      assert(p !=NULL);
      *ptr_page = p;
      return 0;
